@@ -10,6 +10,7 @@ Gidemeyeceğiniz etkinlik biletlerinizi satın veya devredin. Başka platformlar
 - 📱 Responsive tasarım
 - 💬 İletişim bilgileri paylaşımı
 - ✅ Bilet satıldı olarak işaretleme
+- 🔄 Tarih ve fiyat bazlı sıralama
 
 ## Kurulum
 
@@ -50,4 +51,3 @@ Bu proje demo amaçlıdır. Gerçek bir uygulamada:
 - E-posta bildirimleri
 
 gibi özellikler eklenmelidir.
-
