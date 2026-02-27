@@ -1,12 +1,14 @@
-'use client'
+ 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Calendar, MapPin, DollarSign, FileText, Tag } from 'lucide-react'
 import { createTicket } from '@/lib/api'
+import { supabase } from '@/lib/supabase'
 
 export default function BiletEkle() {
   const router = useRouter()
+  const [userId, setUserId] = useState<string>('')
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -15,20 +17,65 @@ export default function BiletEkle() {
     price: '',
     originalPrice: '',
     category: 'konser',
+    currency: 'TRY',
+    imageUrl: '',
     contact: '',
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  useEffect(() => {
+    // check supabase session first, then fallback to legacy localStorage
+    const check = async () => {
+      try {
+        const { data } = await supabase.auth.getSession()
+        const sessionUserId = (data as any)?.session?.user?.id
+        const storedUserId = sessionUserId ?? localStorage.getItem('userId')
+        if (!storedUserId) {
+          router.push('/auth/login')
+          return
+        }
+        setUserId(storedUserId)
+      } catch (e) {
+        const legacy = localStorage.getItem('userId')
+        if (!legacy) {
+          router.push('/auth/login')
+        } else {
+          setUserId(legacy)
+        }
+      }
+    }
+    check()
+  }, [])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
+
+    // simple client side validations
+    if (parseFloat(formData.price) <= 0 || parseFloat(formData.originalPrice) <= 0) {
+      alert('Fiyatlar sıfırdan büyük olmalıdır.')
+      setIsSubmitting(false)
+      return
+    }
+    if (parseFloat(formData.price) > parseFloat(formData.originalPrice)) {
+      alert('Satış fiyatı orijinal fiyattan yüksek olamaz.')
+      setIsSubmitting(false)
+      return
+    }
+    if (formData.eventDate && new Date(formData.eventDate) < new Date()) {
+      alert('Etkinlik tarihi geçmiş olamaz.')
+      setIsSubmitting(false)
+      return
+    }
 
     try {
       await createTicket({
         ...formData,
         price: parseFloat(formData.price),
         originalPrice: parseFloat(formData.originalPrice),
-      })
+        currency: formData.currency,
+        imageUrl: formData.imageUrl,
+      }, userId)
       router.push('/')
     } catch (error) {
       console.error('Bilet eklenirken hata oluştu:', error)
@@ -43,6 +90,31 @@ export default function BiletEkle() {
       ...formData,
       [e.target.name]: e.target.value,
     })
+  }
+
+  // Optionally validate event name against Ticketmaster API
+  const validateEvent = async () => {
+    if (!formData.title) return
+    try {
+      const response = await fetch(
+        `https://app.ticketmaster.com/discovery/v2/events.json?keyword=${encodeURIComponent(
+          formData.title,
+        )}&apikey=YOUR_API_KEY`
+      )
+      const data = await response.json()
+      if (data && data.page && data.page.totalElements === 0) {
+        alert('Girilen etkinlik adına uygun bir sonuç bulunamadı. Lütfen kontrol edin.')
+      }
+      // noter: burada sonuçları UI'da göstermek veya başka bir işlem yapmak mümkün
+      console.log('Etkinlik doğrulama sonuçları:', data)
+    } catch (e) {
+      console.error('Etkinlik doğrulanamadı:', e)
+    }
+  }
+  const handleDateValidation = () => {
+    if (formData.eventDate && new Date(formData.eventDate) < new Date()) {
+      alert('Etkinlik tarihi geçmiş olamaz')
+    }
   }
 
   return (
@@ -68,6 +140,7 @@ export default function BiletEkle() {
               required
               value={formData.title}
               onChange={handleChange}
+              onBlur={validateEvent}
               placeholder="Örn: Tarkan Konseri"
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             />
@@ -102,6 +175,7 @@ export default function BiletEkle() {
                 required
                 value={formData.eventDate}
                 onChange={handleChange}
+                onBlur={handleDateValidation}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               />
             </div>
@@ -182,6 +256,44 @@ export default function BiletEkle() {
                 placeholder="0.00"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label htmlFor="currency" className="block text-sm font-medium text-gray-700 mb-2">
+                Para Birimi *
+              </label>
+              <select
+                id="currency"
+                name="currency"
+                required
+                value={formData.currency}
+                onChange={handleChange}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              >
+                <option value="TRY">TL</option>
+                <option value="USD">USD</option>
+                <option value="EUR">EUR</option>
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="imageUrl" className="block text-sm font-medium text-gray-700 mb-2">
+                Bilet Görseli (URL)
+              </label>
+              <input
+                type="url"
+                id="imageUrl"
+                name="imageUrl"
+                value={formData.imageUrl}
+                onChange={handleChange}
+                placeholder="https://example.com/image.jpg"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              />
+              <p className="mt-1 text-sm text-gray-500">
+                Bir görsel URL'si eklemek güveni artırır. Dosya yükleme desteklenmez.
+              </p>
             </div>
           </div>
 

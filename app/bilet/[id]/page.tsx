@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Calendar, MapPin, DollarSign, User, ArrowLeft, Phone, Mail } from 'lucide-react'
-import { getTicketById, markTicketAsSold } from '@/lib/api'
+import { getTicketById, markTicketAsSold, createOffer, addRating, getRatingsForSeller, Offer } from '@/lib/api'
 import Link from 'next/link'
 
 interface Ticket {
@@ -18,6 +18,9 @@ interface Ticket {
   contact: string
   createdAt: string
   status: 'available' | 'sold'
+  ownerId: string
+  currency: string
+  imageUrl?: string
 }
 
 export default function BiletDetay() {
@@ -25,12 +28,27 @@ export default function BiletDetay() {
   const router = useRouter()
   const [ticket, setTicket] = useState<Ticket | null>(null)
   const [loading, setLoading] = useState(true)
+  const [currentUserId, setCurrentUserId] = useState<string>('')
+  const [offerAmount, setOfferAmount] = useState('')
+  const [sellerRatings, setSellerRatings] = useState<number[]>([])
+  const [rating, setRating] = useState(0)
+
+  useEffect(() => {
+    // Mevcut kullanıcı ID'sini localStorage'dan al
+    const userId = localStorage.getItem('userId') || ''
+    setCurrentUserId(userId)
+  }, [])
 
   useEffect(() => {
     const loadTicket = async () => {
       try {
         const data = await getTicketById(params.id as string)
         setTicket(data)
+        // load existing ratings for seller
+        if (data) {
+          const r = await getRatingsForSeller(data.ownerId)
+          setSellerRatings(r.map(rr => rr.score))
+        }
       } catch (error) {
         console.error('Bilet yüklenirken hata oluştu:', error)
       } finally {
@@ -51,6 +69,40 @@ export default function BiletDetay() {
     } catch (error) {
       console.error('Hata oluştu:', error)
       alert('Bir hata oluştu. Lütfen tekrar deneyin.')
+    }
+  }
+
+  const submitOffer = async () => {
+    if (!offerAmount || isNaN(Number(offerAmount)) || Number(offerAmount) <= 0) {
+      alert('Geçerli bir teklif girin')
+      return
+    }
+    try {
+      if (ticket) {
+        await createOffer(ticket.id, currentUserId, Number(offerAmount))
+        alert('Teklifiniz gönderildi')
+        setOfferAmount('')
+      }
+    } catch (e) {
+      console.error(e)
+      alert('Teklif gönderilirken hata oluştu')
+    }
+  }
+
+  const submitRating = async () => {
+    if (!ticket) return
+    if (rating < 1 || rating > 5) {
+      alert('1-5 arası puan verin')
+      return
+    }
+    try {
+      await addRating(ticket.ownerId, currentUserId, rating)
+      const r = await getRatingsForSeller(ticket.ownerId)
+      setSellerRatings(r.map(rr => rr.score))
+      alert('Puanınız kaydedildi')
+    } catch (e) {
+      console.error(e)
+      alert('Puanlama sırasında hata oluştu')
     }
   }
 
@@ -84,6 +136,19 @@ export default function BiletDetay() {
   const discount = ticket.originalPrice - ticket.price
   const discountPercent = ((discount / ticket.originalPrice) * 100).toFixed(0)
 
+  const formatPrice = (amount: number, currency: string) => {
+    const formatted = amount.toLocaleString()
+    switch (currency) {
+      case 'USD':
+        return `$${formatted}`
+      case 'EUR':
+        return `€${formatted}`
+      case 'TRY':
+      default:
+        return `₺${formatted}`
+    }
+  }
+
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <Link
@@ -95,6 +160,15 @@ export default function BiletDetay() {
       </Link>
 
       <div className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-100">
+        {ticket.imageUrl && (
+          <div className="h-64 w-full overflow-hidden">
+            <img
+              src={ticket.imageUrl}
+              alt={ticket.title}
+              className="object-cover h-full w-full"
+            />
+          </div>
+        )}
         <div className="p-8">
           <div className="flex flex-col md:flex-row md:justify-between md:items-start mb-6 gap-4">
             <div className="flex-1">
@@ -108,11 +182,11 @@ export default function BiletDetay() {
             {ticket.status === 'available' && (
               <div className="text-right md:text-left md:mt-0">
                 <div className="text-3xl font-bold text-primary-600 mb-1">
-                  ₺{ticket.price.toLocaleString()}
+                  {formatPrice(ticket.price, ticket.currency)}
                 </div>
                 {discount > 0 && (
                   <div className="text-sm text-gray-500 line-through">
-                    ₺{ticket.originalPrice.toLocaleString()}
+                    {formatPrice(ticket.originalPrice, ticket.currency)}
                   </div>
                 )}
               </div>
@@ -192,13 +266,62 @@ export default function BiletDetay() {
                 >
                   {isEmail ? '📧 E-posta Gönder' : '📞 Ara'}
                 </a>
-                <button
-                  onClick={handleMarkAsSold}
-                  className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 hover:border-gray-400 transition"
+                {currentUserId === ticket.ownerId && (
+                  <button
+                    onClick={handleMarkAsSold}
+                    className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 hover:border-gray-400 transition"
+                  >
+                    Satıldı Olarak İşaretle
+                  </button>
+                )}
+                {currentUserId && currentUserId !== ticket.ownerId && (
+                  <div className="flex items-center mt-4">
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="Teklifiniz"
+                      value={offerAmount}
+                      onChange={e => setOfferAmount(e.target.value)}
+                      className="w-24 px-2 py-1 border border-gray-300 rounded-md mr-2"
+                    />
+                    <button
+                      onClick={submitOffer}
+                      className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition"
+                    >
+                      Teklif Ver
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {currentUserId && currentUserId !== ticket.ownerId && (
+            <div className="border-t border-gray-200 pt-6">
+              <h2 className="text-xl font-bold mb-3">Satıcıyı Puanla</h2>
+              <div className="flex items-center space-x-2">
+                <select
+                  value={rating}
+                  onChange={e => setRating(Number(e.target.value))}
+                  className="border border-gray-300 rounded-md p-1"
                 >
-                  Satıldı Olarak İşaretle
+                  <option value={0}>Puan seç</option>
+                  {[1,2,3,4,5].map(n => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={submitRating}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
+                >
+                  Gönder
                 </button>
               </div>
+              {sellerRatings.length > 0 && (
+                <p className="text-sm text-gray-600 mt-2">
+                  Ortalama puan: {(sellerRatings.reduce((a,b)=>a+b,0)/sellerRatings.length).toFixed(1)} / 5
+                </p>
+              )}
             </div>
           )}
 

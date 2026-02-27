@@ -17,6 +17,8 @@ interface Ticket {
   contact: string
   createdAt: string
   status: 'available' | 'sold'
+  currency: string
+  imageUrl?: string
 }
 
 type SortOption = 'date-asc' | 'date-desc' | 'price-asc' | 'price-desc'
@@ -71,6 +73,19 @@ export default function Home() {
   }, [searchTerm, selectedCategory, tickets, sortBy])
 
   const categories = ['all', 'konser', 'tiyatro', 'spor', 'festival', 'diger']
+
+  const formatPrice = (amount: number, currency: string) => {
+    const formatted = amount.toLocaleString()
+    switch (currency) {
+      case 'USD':
+        return `$${formatted}`
+      case 'EUR':
+        return `€${formatted}`
+      case 'TRY':
+      default:
+        return `₺${formatted}`
+    }
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -167,8 +182,8 @@ export default function Home() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredTickets.map((ticket) => {
-            const discount = ticket.originalPrice > ticket.price 
-              ? ((ticket.originalPrice - ticket.price) / ticket.originalPrice * 100).toFixed(0)
+            const discountPercent = ticket.originalPrice > ticket.price 
+              ? Number(((ticket.originalPrice - ticket.price) / ticket.originalPrice * 100).toFixed(0))
               : 0
             
             return (
@@ -177,14 +192,23 @@ export default function Home() {
                 href={`/bilet/${ticket.id}`}
                 className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden group border border-gray-100"
               >
+                {ticket.imageUrl && (
+                  <div className="h-40 w-full overflow-hidden">
+                    <img
+                      src={ticket.imageUrl}
+                      alt={ticket.title}
+                      className="object-cover h-full w-full"
+                    />
+                  </div>
+                )}
                 <div className="p-6">
                   <div className="flex justify-between items-start mb-3">
                     <span className="px-3 py-1 bg-primary-100 text-primary-700 rounded-full text-xs font-semibold uppercase">
                       {ticket.category}
                     </span>
-                    {discount > 0 && (
+                    {discountPercent > 0 && (
                       <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-semibold">
-                        %{discount} İndirim
+                        %{discountPercent} İndirim
                       </span>
                     )}
                   </div>
@@ -213,11 +237,11 @@ export default function Home() {
                   <div className="border-t border-gray-100 pt-4 flex items-center justify-between">
                     <div>
                       <span className="text-2xl font-bold text-primary-600">
-                        ₺{ticket.price.toLocaleString()}
+                        {formatPrice(ticket.price, ticket.currency)}
                       </span>
                       {ticket.originalPrice > ticket.price && (
                         <span className="text-sm text-gray-400 line-through ml-2">
-                          ₺{ticket.originalPrice.toLocaleString()}
+                          {formatPrice(ticket.originalPrice, ticket.currency)}
                         </span>
                       )}
                     </div>
