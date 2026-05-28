@@ -79,17 +79,29 @@ export default function Navbar() {
                 Profil
               </Link>
             )}
-            <Link 
-              href="/" 
+            <Link
+              href="/"
               className="text-gray-700 hover:text-primary-600 px-3 py-2 rounded-md text-sm font-medium transition"
             >
               Ana Sayfa
             </Link>
-            <Link 
-              href="/bilet-ekle" 
+            <Link
+              href="/nasil-calisir"
+              className="text-gray-700 hover:text-primary-600 px-3 py-2 rounded-md text-sm font-medium transition"
+            >
+              Nasıl Çalışır
+            </Link>
+            <Link
+              href="/bilet-ara"
+              className="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium transition"
+            >
+              🔍 Bilet Ara
+            </Link>
+            <Link
+              href="/bilet-ekle"
               className="bg-primary-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-primary-700 transition"
             >
-              Bilet Ekle
+              Bilet Sat
             </Link>
           </div>
         </div>

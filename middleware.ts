@@ -1,34 +1,39 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+import { createServerClient } from '@supabase/auth-helpers-nextjs'
 
-// Attempt to read Supabase session from cookies and attach a lightweight
-// `x-user-id` header when available. Note: this requires cookie-based
-// auth storage (Supabase auth tokens in cookies). If your app currently
-// uses localStorage for auth, server-side session detection won't work
-// until you switch to cookie storage or use the auth helper routes.
+const PROTECTED = ['/profile', '/bilet-ekle', '/bilet-ara', '/tickets/new']
 
 export async function middleware(req: NextRequest) {
-  const res = NextResponse.next();
-  try {
-    const supabase = createMiddlewareClient({ req, res })
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
+  const res = NextResponse.next()
 
-    if (session && session.user && session.user.id) {
-      // expose the user id to downstream server code / edge handlers
-      res.headers.set('x-user-id', session.user.id)
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name) { return req.cookies.get(name)?.value },
+        set(name, value, options) { res.cookies.set({ name, value, ...options }) },
+        remove(name, options) { res.cookies.set({ name, value: '', ...options }) },
+      },
     }
-  } catch (e) {
-    // on any error, don't block the request — fall back to client-side guards
-    // or other server-side checks.
+  )
+
+  const { data: { session } } = await supabase.auth.getSession()
+
+  const isProtected = PROTECTED.some(p => req.nextUrl.pathname.startsWith(p))
+
+  if (!session && isProtected) {
+    return NextResponse.redirect(new URL('/auth/login', req.url))
   }
 
-  return res;
+  if (session) {
+    res.headers.set('x-user-id', session.user.id)
+  }
+
+  return res
 }
 
 export const config = {
-  // include both localized and English add-ticket routes for compatibility
   matcher: ['/profile', '/bilet-ekle', '/tickets/new'],
-};
+}

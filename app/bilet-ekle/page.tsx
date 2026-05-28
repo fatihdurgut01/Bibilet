@@ -3,12 +3,22 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Calendar, MapPin, DollarSign, FileText, Tag } from 'lucide-react'
-import { createTicket } from '@/lib/api'
+import { createTicket, updateTicket, getTicketById } from '@/lib/api'
 import { supabase } from '@/lib/supabase'
+import { useToast } from '@/components/ToastProvider'
+
+// Yerel saat dilimiyle bugünün tarihini YYYY-MM-DDTHH:mm formatında döndürür
+function localNow(): string {
+  const d = new Date()
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+}
 
 export default function BiletEkle() {
   const router = useRouter()
+  const toast = useToast()
   const [userId, setUserId] = useState<string>('')
+  const [editId, setEditId] = useState<string | null>(null)
+  const [minDate] = useState(localNow)
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -24,27 +34,42 @@ export default function BiletEkle() {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
-    // check supabase session first, then fallback to legacy localStorage
-    const check = async () => {
-      try {
-        const { data } = await supabase.auth.getSession()
-        const sessionUserId = (data as any)?.session?.user?.id
-        const storedUserId = sessionUserId ?? localStorage.getItem('userId')
-        if (!storedUserId) {
-          router.push('/auth/login')
-          return
-        }
-        setUserId(storedUserId)
-      } catch (e) {
-        const legacy = localStorage.getItem('userId')
-        if (!legacy) {
-          router.push('/auth/login')
-        } else {
-          setUserId(legacy)
+    const init = async () => {
+      const { data } = await supabase.auth.getSession()
+      if (!data.session?.user) {
+        router.push('/auth/login')
+        return
+      }
+      setUserId(data.session.user.id)
+
+      // Edit modu: URL'den ?edit=UUID oku
+      const id = new URLSearchParams(window.location.search).get('edit')
+      if (id) {
+        setEditId(id)
+        try {
+          const ticket = await getTicketById(id)
+          // datetime-local için ISO formatı (YYYY-MM-DDTHH:mm)
+          const localDate = ticket.eventDate
+            ? new Date(ticket.eventDate).toISOString().slice(0, 16)
+            : ''
+          setFormData({
+            title:         ticket.title,
+            description:   ticket.description,
+            eventDate:     localDate,
+            location:      ticket.location,
+            price:         String(ticket.price),
+            originalPrice: String(ticket.originalPrice),
+            category:      ticket.category,
+            currency:      ticket.currency,
+            imageUrl:      ticket.imageUrl ?? '',
+            contact:       ticket.contact,
+          })
+        } catch {
+          toast('Bilet yüklenemedi.', 'error')
         }
       }
     }
-    check()
+    init()
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -53,33 +78,38 @@ export default function BiletEkle() {
 
     // simple client side validations
     if (parseFloat(formData.price) <= 0 || parseFloat(formData.originalPrice) <= 0) {
-      alert('Fiyatlar sıfırdan büyük olmalıdır.')
+      toast('Fiyatlar sıfırdan büyük olmalıdır.', 'error')
       setIsSubmitting(false)
       return
     }
-    if (parseFloat(formData.price) > parseFloat(formData.originalPrice)) {
-      alert('Satış fiyatı orijinal fiyattan yüksek olamaz.')
+    if (parseFloat(formData.price) > parseFloat(formData.originalPrice) * 1.1) {
+      toast('Satış fiyatı orijinal fiyatın %110\'unu geçemez.', 'error')
       setIsSubmitting(false)
       return
     }
     if (formData.eventDate && new Date(formData.eventDate) < new Date()) {
-      alert('Etkinlik tarihi geçmiş olamaz.')
+      toast('Etkinlik tarihi geçmiş olamaz.', 'error')
       setIsSubmitting(false)
       return
     }
 
     try {
-      await createTicket({
+      const ticketData = {
         ...formData,
-        price: parseFloat(formData.price),
+        price:         parseFloat(formData.price),
         originalPrice: parseFloat(formData.originalPrice),
-        currency: formData.currency,
-        imageUrl: formData.imageUrl,
-      }, userId)
+      }
+      if (editId) {
+        await updateTicket(editId, ticketData)
+        toast('Bilet başarıyla güncellendi.', 'success')
+      } else {
+        await createTicket(ticketData, userId)
+        toast('Biletiniz yayınlandı.', 'success')
+      }
       router.push('/')
     } catch (error) {
-      console.error('Bilet eklenirken hata oluştu:', error)
-      alert('Bilet eklenirken bir hata oluştu. Lütfen tekrar deneyin.')
+      console.error('Bilet kaydedilirken hata oluştu:', error)
+      toast('Bilet kaydedilirken bir hata oluştu. Lütfen tekrar deneyin.', 'error')
     } finally {
       setIsSubmitting(false)
     }
@@ -103,7 +133,7 @@ export default function BiletEkle() {
       )
       const data = await response.json()
       if (data && data.page && data.page.totalElements === 0) {
-        alert('Girilen etkinlik adına uygun bir sonuç bulunamadı. Lütfen kontrol edin.')
+        toast('Girilen etkinlik adına uygun bir sonuç bulunamadı. Lütfen kontrol edin.', 'error')
       }
       // noter: burada sonuçları UI'da göstermek veya başka bir işlem yapmak mümkün
       console.log('Etkinlik doğrulama sonuçları:', data)
@@ -113,7 +143,7 @@ export default function BiletEkle() {
   }
   const handleDateValidation = () => {
     if (formData.eventDate && new Date(formData.eventDate) < new Date()) {
-      alert('Etkinlik tarihi geçmiş olamaz')
+      toast('Etkinlik tarihi geçmiş olamaz.', 'error')
     }
   }
 
@@ -121,7 +151,7 @@ export default function BiletEkle() {
     <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="bg-white rounded-xl shadow-lg p-8 border border-gray-100">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Bilet Ekle</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">{editId ? 'Bileti Düzenle' : 'Bilet Ekle'}</h1>
           <p className="text-gray-600">
             Gidemeyeceğiniz etkinlik biletinizi burada paylaşın. Diğer kullanıcılar biletinizi görebilir ve sizinle iletişime geçebilir.
           </p>
@@ -173,6 +203,7 @@ export default function BiletEkle() {
                 id="eventDate"
                 name="eventDate"
                 required
+                min={minDate}
                 value={formData.eventDate}
                 onChange={handleChange}
                 onBlur={handleDateValidation}
@@ -322,7 +353,7 @@ export default function BiletEkle() {
               disabled={isSubmitting}
               className="w-full bg-primary-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-primary-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? 'Ekleniyor...' : 'Bileti Yayınla'}
+              {isSubmitting ? (editId ? 'Güncelleniyor...' : 'Ekleniyor...') : (editId ? 'Güncelle' : 'Bileti Yayınla')}
             </button>
           </div>
         </form>

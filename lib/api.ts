@@ -1,53 +1,4 @@
-// Basit bir in-memory veri deposu (gerçek uygulamada veritabanı kullanılmalı)
-let tickets: any[] = [
-  {
-    id: '1',
-    title: 'Tarkan Konseri',
-    description: 'VIP bölüm biletim var ancak gidemeyeceğim. Bilet dijital olarak gönderilecek.',
-    eventDate: '2024-12-25T20:00:00',
-    location: 'İstanbul, Zorlu Center',
-    price: 800,
-    originalPrice: 1200,
-    category: 'konser',
-    contact: '0532 123 45 67',
-    createdAt: new Date().toISOString(),
-    status: 'available',
-    ownerId: 'owner-1',
-    currency: 'TRY',
-    imageUrl: '',
-  },
-  {
-    id: '2',
-    title: 'Galatasaray - Fenerbahçe Derbisi',
-    description: 'Tribün biletim var, maça gidemeyeceğim. Bilet transfer edilebilir.',
-    eventDate: '2024-12-20T19:00:00',
-    location: 'İstanbul, Nef Stadyumu',
-    price: 500,
-    originalPrice: 600,
-    category: 'spor',
-    contact: 'example@email.com',
-    createdAt: new Date().toISOString(),
-    status: 'available',
-    ownerId: 'owner-2',
-    currency: 'TRY',
-    imageUrl: '',
-  },
-]
-
-// teklifler ve puanlar için basit in-memory depolar
-let offers: {
-  id: string
-  ticketId: string
-  userId: string
-  amount: number
-  createdAt: string
-}[] = []
-
-let ratings: {
-  sellerId: string
-  raterId: string
-  score: number
-}[] = []
+import { supabase } from './supabase'
 
 export interface Ticket {
   id: string
@@ -74,98 +25,324 @@ export interface Offer {
   createdAt: string
 }
 
+export interface OfferWithTicket extends Offer {
+  ticketTitle: string
+}
+
 export interface Rating {
   sellerId: string
   raterId: string
   score: number
 }
 
+// DB satırı (snake_case) → uygulama nesnesi (camelCase)
+function mapTicket(row: Record<string, unknown>): Ticket {
+  return {
+    id:            row.id as string,
+    title:         row.title as string,
+    description:   row.description as string,
+    eventDate:     row.event_date as string,
+    location:      row.location as string,
+    price:         row.price as number,
+    originalPrice: row.original_price as number,
+    category:      row.category as string,
+    contact:       row.contact as string,
+    createdAt:     row.created_at as string,
+    status:        row.status as 'available' | 'sold',
+    ownerId:       row.owner_id as string,
+    currency:      row.currency as string,
+    imageUrl:      (row.image_url as string) || undefined,
+  }
+}
+
+function mapOffer(row: Record<string, unknown>): Offer {
+  return {
+    id:        row.id as string,
+    ticketId:  row.ticket_id as string,
+    userId:    row.user_id as string,
+    amount:    row.amount as number,
+    createdAt: row.created_at as string,
+  }
+}
+
+function mapRating(row: Record<string, unknown>): Rating {
+  return {
+    sellerId: row.seller_id as string,
+    raterId:  row.rater_id as string,
+    score:    row.score as number,
+  }
+}
+
+// ============================================================
+// TICKETS
+// ============================================================
+
 export async function getTickets(): Promise<Ticket[]> {
-  // Simüle edilmiş API çağrısı
-  await new Promise(resolve => setTimeout(resolve, 100))
-  
-  // Tarihi geçen biletleri otomatik olarak sil
-  const now = new Date()
-  tickets = tickets.filter(ticket => {
-    const eventDate = new Date(ticket.eventDate)
-    return eventDate > now || ticket.status === 'sold'
-  })
-  
-  return tickets.filter(t => t.status === 'available')
+  const now = new Date().toISOString()
+  const { data, error } = await supabase
+    .from('tickets')
+    .select('*')
+    .eq('status', 'available')
+    .gt('event_date', now)
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return (data ?? []).map(mapTicket)
 }
 
 export async function getTicketsByOwner(ownerId: string): Promise<Ticket[]> {
-  await new Promise(resolve => setTimeout(resolve, 100))
-  return tickets.filter(t => t.ownerId === ownerId)
-}
+  const { data, error } = await supabase
+    .from('tickets')
+    .select('*')
+    .eq('owner_id', ownerId)
+    .order('created_at', { ascending: false })
 
-export async function createOffer(ticketId: string, userId: string, amount: number): Promise<Offer> {
-  await new Promise(resolve => setTimeout(resolve, 200))
-  const newOffer: Offer = {
-    id: Date.now().toString(),
-    ticketId,
-    userId,
-    amount,
-    createdAt: new Date().toISOString(),
-  }
-  offers.push(newOffer)
-  return newOffer
-}
-
-export async function getOffersByUser(userId: string): Promise<Offer[]> {
-  await new Promise(resolve => setTimeout(resolve, 100))
-  return offers.filter(o => o.userId === userId)
-}
-
-export async function getOffersForSeller(sellerId: string): Promise<Offer[]> {
-  await new Promise(resolve => setTimeout(resolve, 100))
-  // offers on tickets owned by seller
-  const sellerTickets = tickets.filter(t => t.ownerId === sellerId).map(t => t.id)
-  return offers.filter(o => sellerTickets.includes(o.ticketId))
-}
-
-export async function addRating(sellerId: string, raterId: string, score: number): Promise<Rating> {
-  await new Promise(resolve => setTimeout(resolve, 100))
-  const newRating: Rating = { sellerId, raterId, score }
-  ratings.push(newRating)
-  return newRating
-}
-
-export async function getRatingsForSeller(sellerId: string): Promise<Rating[]> {
-  await new Promise(resolve => setTimeout(resolve, 100))
-  return ratings.filter(r => r.sellerId === sellerId)
+  if (error) throw error
+  return (data ?? []).map(mapTicket)
 }
 
 export async function getTicketById(id: string): Promise<Ticket> {
-  await new Promise(resolve => setTimeout(resolve, 100))
-  const ticket = tickets.find(t => t.id === id)
-  if (!ticket) {
-    throw new Error('Bilet bulunamadı')
-  }
-  return ticket
+  const { data, error } = await supabase
+    .from('tickets')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (error || !data) throw new Error('Bilet bulunamadı')
+  return mapTicket(data)
 }
 
 export async function createTicket(
-  data: Omit<Ticket, 'id' | 'createdAt' | 'status' | 'ownerId'>,
+  ticketData: Omit<Ticket, 'id' | 'createdAt' | 'status' | 'ownerId'>,
   ownerId: string
 ): Promise<Ticket> {
-  await new Promise(resolve => setTimeout(resolve, 300))
-  const newTicket: Ticket = {
-    ...data,
-    id: Date.now().toString(),
-    createdAt: new Date().toISOString(),
-    status: 'available',
-    ownerId,
-  }
-  tickets.push(newTicket)
-  return newTicket
+  const { data, error } = await supabase
+    .from('tickets')
+    .insert({
+      title:          ticketData.title,
+      description:    ticketData.description,
+      event_date:     ticketData.eventDate,
+      location:       ticketData.location,
+      price:          ticketData.price,
+      original_price: ticketData.originalPrice,
+      category:       ticketData.category,
+      contact:        ticketData.contact,
+      currency:       ticketData.currency,
+      image_url:      ticketData.imageUrl || null,
+      owner_id:       ownerId,
+      status:         'available',
+    })
+    .select()
+    .single()
+
+  if (error || !data) throw error ?? new Error('Bilet oluşturulamadı')
+  return mapTicket(data)
 }
 
 export async function markTicketAsSold(id: string): Promise<void> {
-  await new Promise(resolve => setTimeout(resolve, 200))
-  const ticket = tickets.find(t => t.id === id)
-  if (ticket) {
-    ticket.status = 'sold'
+  const { error } = await supabase
+    .from('tickets')
+    .update({ status: 'sold' })
+    .eq('id', id)
+
+  if (error) throw error
+}
+
+export async function updateTicket(
+  id: string,
+  ticketData: Omit<Ticket, 'id' | 'createdAt' | 'status' | 'ownerId'>
+): Promise<Ticket> {
+  const { data, error } = await supabase
+    .from('tickets')
+    .update({
+      title:          ticketData.title,
+      description:    ticketData.description,
+      event_date:     ticketData.eventDate,
+      location:       ticketData.location,
+      price:          ticketData.price,
+      original_price: ticketData.originalPrice,
+      category:       ticketData.category,
+      contact:        ticketData.contact,
+      currency:       ticketData.currency,
+      image_url:      ticketData.imageUrl || null,
+    })
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error || !data) throw error ?? new Error('Bilet güncellenemedi')
+  return mapTicket(data)
+}
+
+// ============================================================
+// OFFERS
+// ============================================================
+
+export async function createOffer(
+  ticketId: string,
+  userId: string,
+  amount: number
+): Promise<Offer> {
+  const { data, error } = await supabase
+    .from('offers')
+    .insert({ ticket_id: ticketId, user_id: userId, amount })
+    .select()
+    .single()
+
+  if (error || !data) throw error ?? new Error('Teklif gönderilemedi')
+  return mapOffer(data)
+}
+
+export async function getOffersByUser(userId: string): Promise<Offer[]> {
+  const { data, error } = await supabase
+    .from('offers')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return (data ?? []).map(mapOffer)
+}
+
+export async function getOffersForSeller(sellerId: string): Promise<OfferWithTicket[]> {
+  const { data: ticketRows, error: ticketError } = await supabase
+    .from('tickets')
+    .select('id')
+    .eq('owner_id', sellerId)
+
+  if (ticketError) throw ticketError
+  const ids = (ticketRows ?? []).map((t) => t.id as string)
+  if (ids.length === 0) return []
+
+  const { data, error } = await supabase
+    .from('offers')
+    .select('*, ticket:tickets(title)')
+    .in('ticket_id', ids)
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return (data ?? []).map(row => ({
+    id:          row.id as string,
+    ticketId:    row.ticket_id as string,
+    userId:      row.user_id as string,
+    amount:      row.amount as number,
+    createdAt:   row.created_at as string,
+    ticketTitle: (row.ticket as Record<string, unknown>)?.title as string ?? 'Bilinmeyen Bilet',
+  }))
+}
+
+// ============================================================
+// RATINGS
+// ============================================================
+
+export async function addRating(
+  sellerId: string,
+  raterId: string,
+  score: number
+): Promise<Rating> {
+  // Upsert: aynı (seller_id, rater_id) çifti varsa günceller, yoksa ekler
+  const { data, error } = await supabase
+    .from('ratings')
+    .upsert(
+      { seller_id: sellerId, rater_id: raterId, score },
+      { onConflict: 'seller_id,rater_id' }
+    )
+    .select()
+    .single()
+
+  if (error || !data) throw error ?? new Error('Puanlama kaydedilemedi')
+  return mapRating(data)
+}
+
+export async function getRatingsForSeller(sellerId: string): Promise<Rating[]> {
+  const { data, error } = await supabase
+    .from('ratings')
+    .select('*')
+    .eq('seller_id', sellerId)
+
+  if (error) throw error
+  return (data ?? []).map(mapRating)
+}
+
+// ============================================================
+// WANTED TICKETS
+// ============================================================
+
+export interface WantedTicket {
+  id: string
+  userId: string
+  title: string
+  category: string
+  location: string
+  maxPrice: number
+  description?: string
+  status: 'active' | 'fulfilled'
+  createdAt: string
+}
+
+function mapWantedTicket(row: Record<string, unknown>): WantedTicket {
+  return {
+    id:          row.id as string,
+    userId:      row.user_id as string,
+    title:       row.title as string,
+    category:    row.category as string,
+    location:    row.location as string,
+    maxPrice:    row.max_price as number,
+    description: row.description as string | undefined,
+    status:      row.status as 'active' | 'fulfilled',
+    createdAt:   row.created_at as string,
   }
 }
 
+export async function getWantedTickets(): Promise<WantedTicket[]> {
+  const { data, error } = await supabase
+    .from('wanted_tickets')
+    .select('*')
+    .eq('status', 'active')
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return (data ?? []).map(mapWantedTicket)
+}
+
+export async function getWantedTicketsByUser(userId: string): Promise<WantedTicket[]> {
+  const { data, error } = await supabase
+    .from('wanted_tickets')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return (data ?? []).map(mapWantedTicket)
+}
+
+export async function createWantedTicket(
+  wantedData: Omit<WantedTicket, 'id' | 'createdAt' | 'status' | 'userId'>,
+  userId: string
+): Promise<WantedTicket> {
+  const { data, error } = await supabase
+    .from('wanted_tickets')
+    .insert({
+      user_id:     userId,
+      title:       wantedData.title,
+      category:    wantedData.category,
+      location:    wantedData.location,
+      max_price:   wantedData.maxPrice,
+      description: wantedData.description || null,
+      status:      'active',
+    })
+    .select()
+    .single()
+
+  if (error || !data) throw error ?? new Error('İlan oluşturulamadı')
+  return mapWantedTicket(data)
+}
+
+export async function markWantedTicketFulfilled(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('wanted_tickets')
+    .update({ status: 'fulfilled' })
+    .eq('id', id)
+
+  if (error) throw error
+}

@@ -3,9 +3,12 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { useToast } from '@/components/ToastProvider'
+import { mapError } from '@/lib/errors'
 
 export default function LoginPage() {
   const router = useRouter()
+  const toast = useToast()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -19,17 +22,15 @@ export default function LoginPage() {
     })
     setLoading(false)
     if (error) {
-      alert(error.message)
-    } else {
-      // persist a lightweight user id for client-side guarded pages
-      try {
-        const id = (data as any)?.user?.id ?? (data as any)?.session?.user?.id
-        if (id) localStorage.setItem('userId', id)
-      } catch (e) {
-        // ignore
-      }
-      router.push('/')
+      toast(mapError(error.message), 'error')
+      return
     }
+    if (!data.user?.email_confirmed_at) {
+      await supabase.auth.signOut()
+      toast('E-posta adresinizi doğrulamanız gerekiyor. Lütfen e-postanızı kontrol edin.', 'error')
+      return
+    }
+    router.push('/')
   }
 
   return (

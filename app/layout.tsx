@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Ticket } from 'lucide-react'
 import { ReactNode } from 'react'
 import Navbar from '@/components/Navbar'
+import { ToastProvider } from '@/components/ToastProvider'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -22,6 +23,7 @@ export default function RootLayout({
   return (
     <html lang="tr">
       <body className={inter.className}>
+        <ToastProvider>
         <Navbar />
         <main className="min-h-screen bg-gray-50">
           {children}
@@ -65,6 +67,7 @@ export default function RootLayout({
             </div>
           </div>
         </footer>
+        </ToastProvider>
       </body>
     </html>
   )
