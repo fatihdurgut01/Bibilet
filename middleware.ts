@@ -1,21 +1,26 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { createServerClient } from '@supabase/auth-helpers-nextjs'
+import { createServerClient } from '@supabase/ssr'
 
 const PROTECTED = ['/profile', '/bilet-ekle', '/bilet-ara', '/tickets/new']
 
 export async function middleware(req: NextRequest) {
-  const res = NextResponse.next()
+  let response = NextResponse.next({ request: req })
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name) { return req.cookies.get(name)?.value },
-        set(name, value, options) { res.cookies.set({ name, value, ...options }) },
-        remove(name, options) { res.cookies.set({ name, value: '', ...options }) },
-      },
+        getAll: () => req.cookies.getAll(),
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => req.cookies.set(name, value))
+          response = NextResponse.next({ request: req })
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          )
+        },
+      } satisfies import('@supabase/ssr').CookieMethodsServer,
     }
   )
 
@@ -28,12 +33,12 @@ export async function middleware(req: NextRequest) {
   }
 
   if (session) {
-    res.headers.set('x-user-id', session.user.id)
+    response.headers.set('x-user-id', session.user.id)
   }
 
-  return res
+  return response
 }
 
 export const config = {
-  matcher: ['/profile', '/bilet-ekle', '/tickets/new'],
+  matcher: ['/profile', '/bilet-ekle', '/bilet-ara', '/tickets/new'],
 }
