@@ -58,6 +58,8 @@ export default function RegisterPage() {
     if (error) {
       toast(mapError(error.message), 'error')
     } else {
+      // signUp otomatik session açıyor — e-posta onaylanmadan giriş olmasın
+      await supabase.auth.signOut()
       toast('Kayıt başarılı! E-postanıza gelen bağlantıyla hesabınızı onaylayın.', 'success')
       setTimeout(() => router.push('/auth/login'), 1500)
     }

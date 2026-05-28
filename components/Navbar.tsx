@@ -15,14 +15,16 @@ export default function Navbar() {
     // read supabase session
     const getSession = async () => {
       const { data } = await supabase.auth.getSession()
-      setSession(data.session)
-      setUserName(data.session?.user?.user_metadata?.full_name || data.session?.user?.email || null)
+      const confirmedSession = data.session?.user?.email_confirmed_at ? data.session : null
+      setSession(confirmedSession)
+      setUserName(confirmedSession?.user?.user_metadata?.full_name || confirmedSession?.user?.email || null)
     }
     getSession()
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
-      setUserName(session?.user?.user_metadata?.full_name || session?.user?.email || null)
+      const confirmedSession = session?.user?.email_confirmed_at ? session : null
+      setSession(confirmedSession)
+      setUserName(confirmedSession?.user?.user_metadata?.full_name || confirmedSession?.user?.email || null)
     })
     return () => {
       listener.subscription.unsubscribe()
